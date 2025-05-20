@@ -1,4 +1,5 @@
 package Server;
+
 import java.io.*;
 import java.net.Socket;
 import java.util.*;
@@ -46,10 +47,9 @@ public class ClientHandler implements Runnable {
                         enviarAGrupo();
                         break;
                     default:
-                        out.println("Opcion no válida.");
+                        out.println("Opción no válida.");
                         break;
                 }
-
             }
 
         } catch (IOException e) {
@@ -66,16 +66,35 @@ public class ClientHandler implements Runnable {
     }
 
     private void enviarPrivado() throws IOException {
-        out.println("¿A que usuario deseas enviar el mensaje?");
+        List<String> disponibles = new ArrayList<>();
+        synchronized (users) {
+            for (String nombre : users.keySet()) {
+                if (!nombre.equals(this.clientName)) {
+                    disponibles.add(nombre);
+                }
+            }
+        }
+
+        if (disponibles.isEmpty()) {
+            out.println("No hay otros usuarios conectados en este momento.");
+            return;
+        }
+
+        out.println("Usuarios disponibles:");
+        for (String nombre : disponibles) {
+            out.println(" - " + nombre);
+        }
+
+        out.println("¿A qué usuario deseas enviar el mensaje?");
         String destino = in.readLine();
         out.println("Escribe tu mensaje:");
         String mensaje = in.readLine();
 
         ClientHandler receptor = users.get(destino);
-        if (receptor != null) {
+        if (receptor != null && !destino.equals(clientName)) {
             receptor.out.println("Mensaje privado de " + clientName + ": " + mensaje);
         } else {
-            out.println("Usuario no encontrado.");
+            out.println("Usuario no encontrado o inválido.");
         }
     }
 
@@ -83,14 +102,12 @@ public class ClientHandler implements Runnable {
         out.println("Nombre del grupo:");
         String nombreGrupo = in.readLine();
 
-        // Crear el grupo si no existe
         groups.putIfAbsent(nombreGrupo, new HashSet<>());
-        groups.get(nombreGrupo).add(this); // El creador se une automáticamente
+        groups.get(nombreGrupo).add(this);
 
         out.println("Grupo '" + nombreGrupo + "' creado.");
         out.println("Usuarios disponibles para agregar:");
 
-        // Mostrar usuarios conectados (menos el propio)
         synchronized (users) {
             for (String nombre : users.keySet()) {
                 if (!nombre.equals(this.clientName)) {
@@ -121,10 +138,20 @@ public class ClientHandler implements Runnable {
         }
     }
 
-
     private void enviarAGrupo() throws IOException {
-        out.println("Nombre del grupo:");
+        if (groups.isEmpty()) {
+            out.println("No hay grupos creados aún.");
+            return;
+        }
+
+        out.println("Grupos disponibles:");
+        for (String nombreGrupo : groups.keySet()) {
+            out.println(" - " + nombreGrupo);
+        }
+
+        out.println("Nombre del grupo al que deseas enviar mensaje:");
         String grupo = in.readLine();
+
         if (!groups.containsKey(grupo)) {
             out.println("Grupo no encontrado.");
             return;
