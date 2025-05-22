@@ -21,6 +21,9 @@ ChatTCP/
 │
 ├── client/
 │   └── Client.java
+│   └──AudioPlayer.java
+│   └──AudioSender.Java
+│   └──ClientAudioReceiver.java
 │
 ├── README.md
 └── run.sh / run.bat (opcional)
@@ -92,6 +95,8 @@ MENÚ:
 2. Crear grupo
 3. Enviar mensaje a grupo
 4. Salir
+5. Nota de voz privada
+6. Nota de voz a grupo
 Elige opción:
 ```
 
@@ -108,6 +113,20 @@ Elige opción:
 ### Opción 3 – Enviar mensaje a grupo
 
 - Ingresa el nombre del grupo.
+- El mensaje se enviará a todos sus miembros (menos tú).
+
+### Opción 4 – Salir
+
+### Opción 5 – Nota de voz privada
+
+- Ingresa el nombre del usuario.
+- Se inicia la grabacion del audio y al presionar la tecla enter se envia
+- El mensaje se envia al usuario
+
+### Opción 6 – Nota de voz a grupo
+
+- Ingresa el nombre del grupo.
+- Se inicia la grabacion del audio y al presionar la tecla enter se envia
 - El mensaje se enviará a todos sus miembros (menos tú).
 
 ---
