@@ -13,22 +13,58 @@ public class Client {
         try (
             Socket socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            DataInputStream dataIn = new DataInputStream(socket.getInputStream());
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
             Scanner scanner = new Scanner(System.in);
         ) {
-            // Hilo para recibir tanto mensajes de texto como audios
+            // Hilo para recibir mensajes y audios
             Thread recibir = new Thread(() -> {
                 try {
-                    escucharMensajes(in, dataIn);
-                } catch (IOException e) {
-                    System.out.println("Error recibiendo mensajes del servidor.");
-                    e.printStackTrace();
+                    String linea;
+                    while (true) {
+                        linea = in.readLine();
+                        if (linea == null) break;
+
+                        if (linea.equals("AUDIO")) {
+                            // audio recibido
+                            String nombreArchivo = in.readLine();
+                            int tamaño = Integer.parseInt(in.readLine());
+
+                            byte[] audioBytes = new byte[tamaño];
+                            int bytesLeidos = 0;
+                            while (bytesLeidos < tamaño) {
+                                int leidos = socket.getInputStream().read(audioBytes, bytesLeidos, tamaño - bytesLeidos);
+                                if (leidos == -1) break;
+                                bytesLeidos += leidos;
+                            }
+
+                            // Guardar bytes en archivo temporal
+                            File archivoTemp = new File("tempAudio_" + nombreArchivo);
+                            try (FileOutputStream fos = new FileOutputStream(archivoTemp)) {
+                                fos.write(audioBytes);
+                            } catch (IOException e) {
+                                System.out.println("Error al guardar archivo temporal: " + e.getMessage());
+                                continue;
+                            }
+
+                            // Reproducir audio
+                            reproducirAudio(archivoTemp);
+
+                            // Borrar archivo temporal
+                            if (!archivoTemp.delete()) {
+                                System.out.println("No se pudo borrar el archivo temporal.");
+                            }
+                        } else {
+                            // Mostrar mensaje de texto normal
+                            System.out.println(linea);
+                        }
+                    }
+                } catch (Exception e) {
+                    System.out.println("Conexión cerrada por el servidor.");
                 }
             });
             recibir.start();
 
-            // Hilo principal para enviar mensajes y notas de voz
+            // Hilo principal para enviar mensajes y audios
             while (true) {
                 String linea = scanner.nextLine();
 
@@ -43,16 +79,14 @@ public class Client {
 
                 out.println(linea);
 
-                if (linea.equals("4")) {
-                    break;
-                }
+                if (linea.equals("4")) break; 
             }
 
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
 
+    }
 
     public static void reproducirAudio(File archivoAudio) {
         try (AudioInputStream audioStream = AudioSystem.getAudioInputStream(archivoAudio)) {
@@ -68,41 +102,39 @@ public class Client {
     }
 
     public static void escucharMensajes(BufferedReader in, DataInputStream dataIn) throws IOException {
-        while (true) {
-            String tipo = dataIn.readUTF();
+    while (true) {
+        String tipo = in.readLine();
+        if (tipo == null) break;
 
-            if ("AUDIO".equals(tipo)) {
-                String nombreEmisor = dataIn.readUTF();
+        if ("AUDIO".equals(tipo)) {
+            String nombreEmisor = in.readLine();
+            String nombreArchivo = in.readLine();
+            long tam = Long.parseLong(in.readLine());
 
-                String nombreArchivo = dataIn.readUTF();
-                long tam = dataIn.readLong();
+            File carpeta = new File("audios_recibidos");
+            if (!carpeta.exists()) carpeta.mkdir();
 
-                File carpeta = new File("audios_recibidos");
-                if (!carpeta.exists()) carpeta.mkdir();
-
-                File archivo = new File(carpeta, "de_" + nombreEmisor + "_" + nombreArchivo);
-                try (FileOutputStream fos = new FileOutputStream(archivo)) {
-                    byte[] buffer = new byte[4096];
-                    long leidos = 0;
-                    while (leidos < tam) {
-                        int porLeer = (int) Math.min(buffer.length, tam - leidos);
-                        int r = dataIn.read(buffer, 0, porLeer);
-                        if (r == -1) throw new EOFException("Fin inesperado del stream");
-                        fos.write(buffer, 0, r);
-                        leidos += r;
-                    }
+            File archivo = new File(carpeta, "de_" + nombreEmisor + "_" + nombreArchivo);
+            try (FileOutputStream fos = new FileOutputStream(archivo)) {
+                byte[] buffer = new byte[4096];
+                long leidos = 0;
+                while (leidos < tam) {
+                    int porLeer = (int) Math.min(buffer.length, tam - leidos);
+                    int r = dataIn.read(buffer, 0, porLeer);
+                    if (r == -1) throw new EOFException("Fin inesperado del stream");
+                    fos.write(buffer, 0, r);
+                    leidos += r;
                 }
-
-                System.out.println("Has recibido una nota de voz de " + nombreEmisor + ": " + archivo.getName());
-                System.out.println("Presiona ENTER para reproducirla...");
-                new Scanner(System.in).nextLine();
-
-                reproducirAudio(archivo);
-
-            } else {
-                System.out.println(tipo);
             }
+
+            System.out.println("Has recibido una nota de voz de " + nombreEmisor + ": " + archivo.getName());
+            System.out.println("Presiona ENTER para reproducirla...");
+            new Scanner(System.in).nextLine();
+            reproducirAudio(archivo);
+        } else {
+            System.out.println(tipo);
         }
     }
+}
 
 }
