@@ -60,7 +60,7 @@ public class ClientHandler implements Runnable {
             // Menú principal
             String opcion;
             while (true) {
-                out.println("\nMENU:\n1. Enviar mensaje a usuario\n2. Crear grupo\n3. Enviar mensaje a grupo\n4. Salir\n5. Nota de voz privada\n6. Nota de voz a grupo\nElige opcion:");
+                out.println("\nMENU:\n1. Enviar mensaje a usuario\n2. Crear grupo\n3. Enviar mensaje a grupo\n4. Salir\n5. Nota de voz privada\n6. Nota de voz a grupo\n7. Ver historial privado\n8. Ver historial de grupo\nElige opcion:");
                 opcion = in.readLine();
 
                 if (opcion == null || opcion.equals("4")) break;
@@ -81,6 +81,12 @@ public class ClientHandler implements Runnable {
                     case "6":
                         recibirYReenviarNotaVoz(true);
                         break;
+                    case "7":
+                        verHistorialPrivado();
+                        break;
+                    case "8":
+                        verHistorialGrupo();
+                        break;
                     default:
                         out.println("Opción no válida.");
                         break;
@@ -91,7 +97,7 @@ public class ClientHandler implements Runnable {
             System.out.println("Error con el cliente " + clientName);
         } finally {
             try {
-                // si se desconecta el cliente,  eliminar usuario y eliminarlo de grupos
+                // si se desconecta el cliente, eliminar usuario y eliminarlo de grupos
                 synchronized (users) {
                     users.remove(clientName);
                 }
@@ -138,6 +144,11 @@ public class ClientHandler implements Runnable {
         }
         if (receptor != null && !destino.equals(clientName)) {
             receptor.out.println("Mensaje privado de " + clientName + ": " + mensaje);
+            
+            // Guardar en historial
+            MessageHistory.savePrivateMessage(clientName, destino, mensaje);
+            
+            out.println("Mensaje enviado correctamente.");
         } else {
             out.println("Usuario no encontrado o inválido.");
         }
@@ -230,11 +241,81 @@ public class ClientHandler implements Runnable {
                 }
             }
         }
+        
+        // Guardar en historial
+        MessageHistory.saveGroupMessage(clientName, grupo, mensaje);
+        
+        out.println("Mensaje enviado al grupo correctamente.");
+    }
+
+    private void verHistorialPrivado() throws IOException {
+        List<String> disponibles = new ArrayList<>();
+        synchronized (users) {
+            for (String nombre : users.keySet()) {
+                if (!nombre.equals(this.clientName)) {
+                    disponibles.add(nombre);
+                }
+            }
+        }
+
+        if (disponibles.isEmpty()) {
+            out.println("No hay otros usuarios para ver historial.");
+            return;
+        }
+
+        out.println("Usuarios disponibles para ver historial:");
+        for (String nombre : disponibles) {
+            out.println(" - " + nombre);
+        }
+
+        out.println("¿De qué usuario quieres ver el historial?");
+        String usuario = in.readLine();
+
+        List<String> historial = MessageHistory.getPrivateHistory(clientName, usuario);
+        
+        if (historial.isEmpty()) {
+            out.println("No hay historial con " + usuario);
+        } else {
+            out.println("=== HISTORIAL CON " + usuario.toUpperCase() + " ===");
+            for (String linea : historial) {
+                out.println(linea);
+            }
+            out.println("=== FIN DEL HISTORIAL ===");
+        }
+    }
+
+    private void verHistorialGrupo() throws IOException {
+        if (groups.isEmpty()) {
+            out.println("No hay grupos disponibles.");
+            return;
+        }
+
+        out.println("Grupos disponibles:");
+        synchronized (groups) {
+            for (String nombreGrupo : groups.keySet()) {
+                out.println(" - " + nombreGrupo);
+            }
+        }
+
+        out.println("¿De qué grupo quieres ver el historial?");
+        String grupo = in.readLine();
+
+        List<String> historial = MessageHistory.getGroupHistory(grupo);
+        
+        if (historial.isEmpty()) {
+            out.println("No hay historial para el grupo " + grupo);
+        } else {
+            out.println("=== HISTORIAL DEL GRUPO " + grupo.toUpperCase() + " ===");
+            for (String linea : historial) {
+                out.println(linea);
+            }
+            out.println("=== FIN DEL HISTORIAL ===");
+        }
     }
 
     public File recibirArchivoAudio(String nombreEmisor) throws IOException {
-        String nombreArchivo = in.readLine();  // aquí lees el nombre del archivo enviado
-        long tamArchivo = Long.parseLong(in.readLine()); // tamaño archivo
+        String nombreArchivo = in.readLine();
+        long tamArchivo = Long.parseLong(in.readLine());
 
         File carpeta = new File("audios_recibidos");
         if (!carpeta.exists()) carpeta.mkdir();
@@ -263,14 +344,11 @@ public class ClientHandler implements Runnable {
         return archivo;
     }
 
-
     public void reenviarArchivoAudio(Socket destinoSocket, File archivo, String nombreEmisor) throws IOException {
         DataOutputStream dos = new DataOutputStream(destinoSocket.getOutputStream());
 
         dos.writeUTF("AUDIO");
-
         dos.writeUTF(nombreEmisor);
-
         dos.writeUTF(archivo.getName());
         dos.writeLong(archivo.length());
 
@@ -290,7 +368,6 @@ public class ClientHandler implements Runnable {
         try {
             String destino = in.readLine(); // nombre usuario o grupo
 
-            // PASAR EL NOMBRE DEL EMISOR (this.clientName)
             File archivo = recibirArchivoAudio(this.clientName);
 
             if (esGrupo) {
@@ -302,17 +379,23 @@ public class ClientHandler implements Runnable {
 
                 for (ClientHandler miembro : miembros) {
                     if (!miembro.clientName.equals(this.clientName)) {
-                        // PASAR TAMBIÉN EL NOMBRE DEL EMISOR
                         reenviarArchivoAudio(miembro.clientSocket, archivo, this.clientName);
                     }
                 }
+                
+                // Guardar audio en historial de grupo
+                MessageHistory.saveGroupAudio(this.clientName, destino, archivo);
+                
                 out.println("Audio reenviado a grupo " + destino);
 
             } else {
                 ClientHandler receptor = users.get(destino);
                 if (receptor != null) {
-                    // PASAR TAMBIÉN EL NOMBRE DEL EMISOR
                     reenviarArchivoAudio(receptor.clientSocket, archivo, this.clientName);
+                    
+                    // Guardar audio en historial privado
+                    MessageHistory.savePrivateAudio(this.clientName, destino, archivo);
+                    
                     out.println("Audio reenviado a usuario " + destino);
                 } else {
                     out.println("Usuario destino no encontrado.");
@@ -357,9 +440,8 @@ public class ClientHandler implements Runnable {
 
                 if ("AUDIO".equals(tipoMensaje)) {
                     String nombreEmisor = in.readLine();
-                    recibirArchivoAudio(nombreEmisor);  // método que ya tienes modificado
+                    recibirArchivoAudio(nombreEmisor);
                 } else {
-                    // Aquí se muestran mensajes normales o comandos
                     System.out.println(tipoMensaje);
                 }
             }
@@ -368,5 +450,4 @@ public class ClientHandler implements Runnable {
             System.out.println("Error en la conexión o lectura de mensajes.");
         }
     }
-
 }
