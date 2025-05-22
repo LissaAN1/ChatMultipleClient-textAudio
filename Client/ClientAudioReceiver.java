@@ -1,6 +1,9 @@
 package Client;
+
+import javax.sound.sampled.*;
 import java.io.*;
 import java.net.Socket;
+import java.util.Scanner;
 
 public class ClientAudioReceiver {
     private Socket socket;
@@ -11,11 +14,14 @@ public class ClientAudioReceiver {
         this.dataIn = new DataInputStream(socket.getInputStream());
     }
 
-    public File recibirArchivoAudio() throws IOException {
+    public File recibirArchivoAudio(String nombreEmisor) throws IOException {
         String nombreArchivo = dataIn.readUTF();
         long tamArchivo = dataIn.readLong();
-        
-        File archivo = new File("client_received_" + nombreArchivo);
+
+        File carpeta = new File("audios_recibidos");
+        if (!carpeta.exists()) carpeta.mkdir();  // crear si no existe
+
+        File archivo = new File(carpeta, "de_" + nombreEmisor + "_" + nombreArchivo);
         try (FileOutputStream fos = new FileOutputStream(archivo)) {
             byte[] buffer = new byte[4096];
             long bytesLeidos = 0;
@@ -28,7 +34,26 @@ public class ClientAudioReceiver {
             }
             fos.flush();
         }
-        System.out.println("Archivo recibido: " + archivo.getName() + " (" + tamArchivo + " bytes)");
+
+        System.out.println("Has recibido una nota de voz de " + nombreEmisor + ": " + archivo.getName());
+        System.out.println("Presiona ENTER para reproducirla...");
+
+        // Esperar ENTER
+        new Scanner(System.in).nextLine();
+        reproducirAudio(archivo);
+
         return archivo;
+    }
+
+    public static void reproducirAudio(File archivo) {
+        try (AudioInputStream audioStream = AudioSystem.getAudioInputStream(archivo)) {
+            Clip clip = AudioSystem.getClip();
+            clip.open(audioStream);
+            clip.start();
+            // Esperar a que termine
+            Thread.sleep(clip.getMicrosecondLength() / 1000);
+        } catch (Exception e) {
+            System.out.println("Error al reproducir el audio: " + e.getMessage());
+        }
     }
 }

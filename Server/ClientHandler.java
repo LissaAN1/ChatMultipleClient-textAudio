@@ -4,6 +4,14 @@ import java.io.*;
 import java.net.Socket;
 import java.util.*;
 
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.Clip;
+import javax.sound.sampled.DataLine;
+import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.UnsupportedAudioFileException;
+
 public class ClientHandler implements Runnable {
     private Socket clientSocket;
     private String clientName;
@@ -224,11 +232,15 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    public File recibirArchivoAudio() throws IOException {
-        String nombreArchivo = dataIn.readUTF();
-        long tamArchivo = dataIn.readLong();
+    public File recibirArchivoAudio(String nombreEmisor) throws IOException {
+        String nombreArchivo = in.readLine();  // aquí lees el nombre del archivo enviado
+        long tamArchivo = Long.parseLong(in.readLine()); // tamaño archivo
 
-        File archivo = new File("server_received_" + nombreArchivo);
+        File carpeta = new File("audios_recibidos");
+        if (!carpeta.exists()) carpeta.mkdir();
+
+        File archivo = new File(carpeta, "de_" + nombreEmisor + "_" + nombreArchivo);
+
         try (FileOutputStream fos = new FileOutputStream(archivo)) {
             byte[] buffer = new byte[4096];
             long bytesLeidos = 0;
@@ -241,12 +253,24 @@ public class ClientHandler implements Runnable {
             }
             fos.flush();
         }
-        System.out.println("Archivo recibido: " + archivo.getName() + " (" + tamArchivo + " bytes)");
+
+        System.out.println("Has recibido una nota de voz de " + nombreEmisor + ": " + archivo.getName());
+        System.out.println("Presiona ENTER para reproducirla...");
+        new Scanner(System.in).nextLine();
+
+        reproducirAudio(archivo);
+
         return archivo;
     }
 
-    public void reenviarArchivoAudio(Socket destinoSocket, File archivo) throws IOException {
+
+    public void reenviarArchivoAudio(Socket destinoSocket, File archivo, String nombreEmisor) throws IOException {
         DataOutputStream dos = new DataOutputStream(destinoSocket.getOutputStream());
+
+        dos.writeUTF("AUDIO");
+
+        dos.writeUTF(nombreEmisor);
+
         dos.writeUTF(archivo.getName());
         dos.writeLong(archivo.length());
 
@@ -258,14 +282,16 @@ public class ClientHandler implements Runnable {
             }
             dos.flush();
         }
-        System.out.println("Archivo reenviado a: " + destinoSocket.getInetAddress());
+
+        System.out.println("Audio reenviado a: " + destinoSocket.getInetAddress());
     }
 
     public void recibirYReenviarNotaVoz(boolean esGrupo) {
         try {
             String destino = in.readLine(); // nombre usuario o grupo
 
-            File archivo = recibirArchivoAudio();
+            // PASAR EL NOMBRE DEL EMISOR (this.clientName)
+            File archivo = recibirArchivoAudio(this.clientName);
 
             if (esGrupo) {
                 Set<ClientHandler> miembros = groups.get(destino);
@@ -276,7 +302,8 @@ public class ClientHandler implements Runnable {
 
                 for (ClientHandler miembro : miembros) {
                     if (!miembro.clientName.equals(this.clientName)) {
-                        reenviarArchivoAudio(miembro.clientSocket, archivo);
+                        // PASAR TAMBIÉN EL NOMBRE DEL EMISOR
+                        reenviarArchivoAudio(miembro.clientSocket, archivo, this.clientName);
                     }
                 }
                 out.println("Audio reenviado a grupo " + destino);
@@ -284,18 +311,62 @@ public class ClientHandler implements Runnable {
             } else {
                 ClientHandler receptor = users.get(destino);
                 if (receptor != null) {
-                    reenviarArchivoAudio(receptor.clientSocket, archivo);
+                    // PASAR TAMBIÉN EL NOMBRE DEL EMISOR
+                    reenviarArchivoAudio(receptor.clientSocket, archivo, this.clientName);
                     out.println("Audio reenviado a usuario " + destino);
                 } else {
                     out.println("Usuario destino no encontrado.");
                 }
             }
 
-            archivo.delete();
+            archivo.delete(); // Elimina temporal tras reenviar
 
         } catch (IOException e) {
             e.printStackTrace();
             out.println("Error al recibir o reenviar audio.");
         }
     }
+
+    public static void reproducirAudio(File archivo) {
+        try (AudioInputStream audioStream = AudioSystem.getAudioInputStream(archivo)) {
+            AudioFormat formato = audioStream.getFormat();
+            DataLine.Info info = new DataLine.Info(Clip.class, formato);
+
+            Clip clip = (Clip) AudioSystem.getLine(info);
+
+            clip.open(audioStream);
+            clip.start();
+
+            // Esperar a que termine la reproducción
+            while (!clip.isRunning())
+                Thread.sleep(10);
+            while (clip.isRunning())
+                Thread.sleep(10);
+
+            clip.close();
+        } catch (UnsupportedAudioFileException | IOException | LineUnavailableException | InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void escucharMensajes() {
+        try {
+            while (true) {
+                String tipoMensaje = in.readLine();
+                if (tipoMensaje == null) break;
+
+                if ("AUDIO".equals(tipoMensaje)) {
+                    String nombreEmisor = in.readLine();
+                    recibirArchivoAudio(nombreEmisor);  // método que ya tienes modificado
+                } else {
+                    // Aquí se muestran mensajes normales o comandos
+                    System.out.println(tipoMensaje);
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.out.println("Error en la conexión o lectura de mensajes.");
+        }
+    }
+
 }
