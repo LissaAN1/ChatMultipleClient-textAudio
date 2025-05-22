@@ -38,7 +38,6 @@ public class ClientHandler implements Runnable {
             out.println("Ingresa tu nombre:");
             clientName = in.readLine();
 
-            // Verificar si el nombre está en uso
             synchronized (users) {
                 if (users.containsKey(clientName)) {
                     out.println("Nombre ya en uso. Conexión terminada.");

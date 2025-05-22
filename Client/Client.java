@@ -9,19 +9,6 @@ public class Client {
     private static final String SERVER_ADDRESS = "localhost";
     private static final int SERVER_PORT = 6789;
 
-    public static void reproducirAudio(File archivoAudio) {
-        try (AudioInputStream audioStream = AudioSystem.getAudioInputStream(archivoAudio)) {
-            Clip clip = AudioSystem.getClip();
-            clip.open(audioStream);
-            clip.start();
-
-            // Esperar a que termine la reproducción
-            Thread.sleep(clip.getMicrosecondLength() / 1000);
-        } catch (Exception e) {
-            System.out.println("Error al reproducir audio: " + e.getMessage());
-        }
-    }
-
     public static void main(String[] args) {
         try (
             Socket socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
@@ -30,8 +17,7 @@ public class Client {
             Scanner scanner = new Scanner(System.in);
         ) {
             // Hilo para recibir mensajes y audios
-           
-           Thread recibir = new Thread(() -> {
+            Thread recibir = new Thread(() -> {
                 try {
                     String linea;
                     while (true) {
@@ -39,6 +25,7 @@ public class Client {
                         if (linea == null) break;
 
                         if (linea.equals("AUDIO")) {
+                            // Manejo de audio recibido
                             String nombreArchivo = in.readLine();
                             int tamaño = Integer.parseInt(in.readLine());
 
@@ -56,7 +43,7 @@ public class Client {
                                 fos.write(audioBytes);
                             } catch (IOException e) {
                                 System.out.println("Error al guardar archivo temporal: " + e.getMessage());
-                                continue; // seguir escuchando en caso de error
+                                continue;
                             }
 
                             // Reproducir audio
@@ -66,39 +53,50 @@ public class Client {
                             if (!archivoTemp.delete()) {
                                 System.out.println("No se pudo borrar el archivo temporal.");
                             }
+                        } else {
+                            // Mostrar mensaje de texto normal
+                            System.out.println(linea);
                         }
-
                     }
                 } catch (Exception e) {
                     System.out.println("Conexión cerrada por el servidor.");
                 }
             });
-            recibir.start(); 
+            recibir.start();
 
             // Hilo principal para enviar mensajes y audios
             while (true) {
                 String linea = scanner.nextLine();
 
-                // Audio privado
-                if (linea.equals("5")) {
-                    AudioSender.grabarYEnviarAudio(socket, "", false); 
+                if (linea.equals("5")) { 
+                    AudioSender.grabarYEnviarAudio(socket, "", false);
                     continue;
                 }
-
-                // Audio grupo
-                if (linea.equals("6")) {
-                    AudioSender.grabarYEnviarAudio(socket, "", true); 
+                if (linea.equals("6")) { 
+                    AudioSender.grabarYEnviarAudio(socket, "", true);
                     continue;
                 }
 
                 out.println(linea);
 
-                if (linea.equals("4")) break;
+                if (linea.equals("4")) break; 
             }
 
         } catch (Exception e) {
             e.printStackTrace();
         }
-        
+    }
+
+    public static void reproducirAudio(File archivoAudio) {
+        try (AudioInputStream audioStream = AudioSystem.getAudioInputStream(archivoAudio)) {
+            Clip clip = AudioSystem.getClip();
+            clip.open(audioStream);
+            clip.start();
+
+            // Esperar a que termine la reproducción
+            Thread.sleep(clip.getMicrosecondLength() / 1000);
+        } catch (Exception e) {
+            System.out.println("Error al reproducir audio: " + e.getMessage());
+        }
     }
 }
