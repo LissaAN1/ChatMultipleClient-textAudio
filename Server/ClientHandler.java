@@ -4,14 +4,6 @@ import java.io.*;
 import java.net.Socket;
 import java.util.*;
 
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.Clip;
-import javax.sound.sampled.DataLine;
-import javax.sound.sampled.LineUnavailableException;
-import javax.sound.sampled.UnsupportedAudioFileException;
-
 public class ClientHandler implements Runnable {
     private Socket clientSocket;
     private String clientName;
@@ -33,16 +25,14 @@ public class ClientHandler implements Runnable {
         this.out = new PrintWriter(clientSocket.getOutputStream(), true);
         this.dataIn = new DataInputStream(clientSocket.getInputStream());
         this.dataOut = new DataOutputStream(clientSocket.getOutputStream());
+        
+        // Crear directorio para audios del servidor si no existe
+        new File("server_audios").mkdirs();
     }
 
     @Override
     public void run() {
         try {
-            in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-            out = new PrintWriter(clientSocket.getOutputStream(), true);
-            dataIn = new DataInputStream(clientSocket.getInputStream());
-            dataOut = new DataOutputStream(clientSocket.getOutputStream());
-
             out.println("Ingresa tu nombre:");
             clientName = in.readLine();
 
@@ -76,10 +66,10 @@ public class ClientHandler implements Runnable {
                         enviarAGrupo();
                         break;
                     case "5":
-                        recibirYReenviarNotaVoz(false);
+                        manejarNotaVozPrivada();
                         break;
                     case "6":
-                        recibirYReenviarNotaVoz(true);
+                        manejarNotaVozGrupo();
                         break;
                     case "7":
                         verHistorialPrivado();
@@ -94,7 +84,7 @@ public class ClientHandler implements Runnable {
             }
 
         } catch (IOException e) {
-            System.out.println("Error con el cliente " + clientName);
+            System.out.println("Error con el cliente " + clientName + ": " + e.getMessage());
         } finally {
             try {
                 // si se desconecta el cliente, eliminar usuario y eliminarlo de grupos
@@ -107,6 +97,7 @@ public class ClientHandler implements Runnable {
                     }
                 }
                 clientSocket.close();
+                System.out.println("Cliente " + clientName + " desconectado.");
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -248,6 +239,234 @@ public class ClientHandler implements Runnable {
         out.println("Mensaje enviado al grupo correctamente.");
     }
 
+    private void manejarNotaVozPrivada() throws IOException {
+        // Mostrar usuarios disponibles
+        List<String> disponibles = new ArrayList<>();
+        synchronized (users) {
+            for (String nombre : users.keySet()) {
+                if (!nombre.equals(this.clientName)) {
+                    disponibles.add(nombre);
+                }
+            }
+        }
+
+        if (disponibles.isEmpty()) {
+            out.println("No hay otros usuarios conectados.");
+            return;
+        }
+
+        out.println("Usuarios disponibles:");
+        for (String nombre : disponibles) {
+            out.println(" - " + nombre);
+        }
+        out.flush(); // Asegurar que se envía inmediatamente
+
+        // Esperar a que el cliente envíe el destinatario
+        String destino = in.readLine();
+        if (destino == null || destino.trim().isEmpty()) {
+            out.println("Destinatario no válido.");
+            return;
+        }
+
+        ClientHandler receptor;
+        synchronized (users) {
+            receptor = users.get(destino.trim());
+        }
+
+        if (receptor == null || destino.equals(clientName)) {
+            out.println("Usuario no encontrado o inválido.");
+            return;
+        }
+
+        try {
+            // Recibir audio del cliente
+            File audioRecibido = recibirArchivoAudio();
+            
+            if (audioRecibido == null || audioRecibido.length() == 0) {
+                out.println("Error: Audio no recibido correctamente.");
+                return;
+            }
+
+            // Reenviar audio al destinatario
+            boolean enviado = enviarAudioACliente(receptor, audioRecibido, this.clientName);
+            
+            if (enviado) {
+                // Guardar en historial
+                MessageHistory.savePrivateAudio(this.clientName, destino, audioRecibido);
+                out.println("Nota de voz enviada correctamente a " + destino);
+                System.out.println("Audio privado enviado de " + clientName + " a " + destino);
+            } else {
+                out.println("Error al enviar la nota de voz.");
+            }
+
+        } catch (IOException e) {
+            out.println("Error al procesar la nota de voz: " + e.getMessage());
+            System.err.println("Error procesando audio de " + clientName + ": " + e.getMessage());
+        }
+    }
+
+    private void manejarNotaVozGrupo() throws IOException {
+        if (groups.isEmpty()) {
+            out.println("No hay grupos disponibles.");
+            return;
+        }
+
+        // Mostrar grupos disponibles
+        out.println("Grupos disponibles:");
+        synchronized (groups) {
+            for (String nombreGrupo : groups.keySet()) {
+                out.println(" - " + nombreGrupo);
+            }
+        }
+        out.flush(); // Asegurar que se envía inmediatamente
+
+        // Esperar a que el cliente envíe el grupo
+        String nombreGrupo = in.readLine();
+        if (nombreGrupo == null || nombreGrupo.trim().isEmpty()) {
+            out.println("Nombre de grupo no válido.");
+            return;
+        }
+
+        Set<ClientHandler> miembros;
+        synchronized (groups) {
+            miembros = groups.get(nombreGrupo.trim());
+        }
+
+        if (miembros == null) {
+            out.println("Grupo no encontrado.");
+            return;
+        }
+
+        try {
+            // Recibir audio del cliente
+            File audioRecibido = recibirArchivoAudio();
+            
+            if (audioRecibido == null || audioRecibido.length() == 0) {
+                out.println("Error: Audio no recibido correctamente.");
+                return;
+            }
+
+            // Reenviar audio a todos los miembros del grupo
+            int exitosos = 0;
+            for (ClientHandler miembro : miembros) {
+                if (!miembro.clientName.equals(this.clientName)) {
+                    if (enviarAudioACliente(miembro, audioRecibido, this.clientName)) {
+                        exitosos++;
+                    }
+                }
+            }
+
+            if (exitosos > 0) {
+                // Guardar en historial
+                MessageHistory.saveGroupAudio(this.clientName, nombreGrupo, audioRecibido);
+                out.println("Nota de voz enviada correctamente al grupo " + nombreGrupo + " (" + exitosos + " miembros)");
+                System.out.println("Audio grupal enviado de " + clientName + " al grupo " + nombreGrupo + " (" + exitosos + " receptores)");
+            } else {
+                out.println("No se pudo enviar la nota de voz a ningún miembro del grupo.");
+            }
+
+        } catch (IOException e) {
+            out.println("Error al procesar la nota de voz: " + e.getMessage());
+            System.err.println("Error procesando audio grupal de " + clientName + ": " + e.getMessage());
+        }
+    }
+
+    private File recibirArchivoAudio() throws IOException {
+        try {
+            // Recibir información del archivo
+            String nombreArchivo = dataIn.readUTF();
+            long tamanoArchivo = dataIn.readLong();
+
+            System.out.println("Recibiendo audio: " + nombreArchivo + " (" + tamanoArchivo + " bytes) de " + clientName);
+
+            if (tamanoArchivo <= 0) {
+                throw new IOException("Tamaño de archivo inválido: " + tamanoArchivo);
+            }
+
+            // Crear archivo en el servidor
+            File carpetaAudios = new File("server_audios");
+            if (!carpetaAudios.exists()) {
+                carpetaAudios.mkdirs();
+            }
+            
+            String nombreUnico = System.currentTimeMillis() + "_" + clientName + "_" + nombreArchivo;
+            File archivoAudio = new File(carpetaAudios, nombreUnico);
+
+            // Recibir datos del archivo
+            try (FileOutputStream fos = new FileOutputStream(archivoAudio);
+                 BufferedOutputStream bos = new BufferedOutputStream(fos)) {
+                
+                byte[] buffer = new byte[4096];
+                long bytesRecibidos = 0;
+
+                while (bytesRecibidos < tamanoArchivo) {
+                    int bytesParaLeer = (int) Math.min(buffer.length, tamanoArchivo - bytesRecibidos);
+                    int bytesLeidos = dataIn.read(buffer, 0, bytesParaLeer);
+                    
+                    if (bytesLeidos == -1) {
+                        throw new IOException("Conexión cerrada inesperadamente");
+                    }
+
+                    bos.write(buffer, 0, bytesLeidos);
+                    bytesRecibidos += bytesLeidos;
+                }
+                bos.flush();
+            }
+
+            System.out.println("Audio recibido y guardado: " + archivoAudio.getPath() + " (" + archivoAudio.length() + " bytes)");
+            return archivoAudio;
+            
+        } catch (IOException e) {
+            System.err.println("Error recibiendo archivo de audio de " + clientName + ": " + e.getMessage());
+            throw e;
+        }
+    }
+
+    private boolean enviarAudioACliente(ClientHandler cliente, File audioFile, String emisor) {
+        try {
+            // Verificar que el archivo existe y no está vacío
+            if (!audioFile.exists() || audioFile.length() == 0) {
+                System.err.println("Archivo de audio inválido: " + audioFile.getPath());
+                return false;
+            }
+
+            // Enviar señal de audio entrante
+            cliente.out.println("AUDIO_INCOMING");
+            cliente.out.flush();
+
+            // Pequeña pausa para asegurar sincronización
+            Thread.sleep(50);
+
+            // Enviar información del audio
+            cliente.dataOut.writeUTF(emisor);
+            cliente.dataOut.writeUTF(audioFile.getName());
+            cliente.dataOut.writeLong(audioFile.length());
+
+            // Enviar contenido del archivo
+            try (FileInputStream fis = new FileInputStream(audioFile);
+                 BufferedInputStream bis = new BufferedInputStream(fis)) {
+                
+                byte[] buffer = new byte[4096];
+                int bytesLeidos;
+                long totalEnviado = 0;
+                
+                while ((bytesLeidos = bis.read(buffer)) > 0) {
+                    cliente.dataOut.write(buffer, 0, bytesLeidos);
+                    totalEnviado += bytesLeidos;
+                }
+                cliente.dataOut.flush();
+                
+                System.out.println("Audio enviado a " + cliente.clientName + ": " + audioFile.getName() + " (" + totalEnviado + " bytes)");
+            }
+
+            return true;
+
+        } catch (Exception e) {
+            System.err.println("Error enviando audio a " + cliente.clientName + ": " + e.getMessage());
+            return false;
+        }
+    }
+
     private void verHistorialPrivado() throws IOException {
         List<String> disponibles = new ArrayList<>();
         synchronized (users) {
@@ -313,141 +532,19 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    public File recibirArchivoAudio(String nombreEmisor) throws IOException {
-        String nombreArchivo = in.readLine();
-        long tamArchivo = Long.parseLong(in.readLine());
-
-        File carpeta = new File("audios_recibidos");
-        if (!carpeta.exists()) carpeta.mkdir();
-
-        File archivo = new File(carpeta, "de_" + nombreEmisor + "_" + nombreArchivo);
-
-        try (FileOutputStream fos = new FileOutputStream(archivo)) {
-            byte[] buffer = new byte[4096];
-            long bytesLeidos = 0;
-            while (bytesLeidos < tamArchivo) {
-                int bytesPorLeer = (int) Math.min(buffer.length, tamArchivo - bytesLeidos);
-                int read = dataIn.read(buffer, 0, bytesPorLeer);
-                if (read == -1) throw new EOFException("Fin inesperado del stream");
-                fos.write(buffer, 0, read);
-                bytesLeidos += read;
-            }
-            fos.flush();
-        }
-
-        System.out.println("Has recibido una nota de voz de " + nombreEmisor + ": " + archivo.getName());
-        System.out.println("Presiona ENTER para reproducirla...");
-        new Scanner(System.in).nextLine();
-
-        reproducirAudio(archivo);
-
-        return archivo;
+    // Métodos getter para acceder al clientName
+    public String getClientName() {
+        return clientName;
     }
 
-    public void reenviarArchivoAudio(Socket destinoSocket, File archivo, String nombreEmisor) throws IOException {
-        DataOutputStream dos = new DataOutputStream(destinoSocket.getOutputStream());
-
-        dos.writeUTF("AUDIO");
-        dos.writeUTF(nombreEmisor);
-        dos.writeUTF(archivo.getName());
-        dos.writeLong(archivo.length());
-
-        try (FileInputStream fis = new FileInputStream(archivo)) {
-            byte[] buffer = new byte[4096];
-            int count;
-            while ((count = fis.read(buffer)) > 0) {
-                dos.write(buffer, 0, count);
-            }
-            dos.flush();
-        }
-
-        System.out.println("Audio reenviado a: " + destinoSocket.getInetAddress());
-    }
-
-    public void recibirYReenviarNotaVoz(boolean esGrupo) {
+    // Método para cerrar conexión
+    public void cerrarConexion() {
         try {
-            String destino = in.readLine(); // nombre usuario o grupo
-
-            File archivo = recibirArchivoAudio(this.clientName);
-
-            if (esGrupo) {
-                Set<ClientHandler> miembros = groups.get(destino);
-                if (miembros == null) {
-                    out.println("Grupo no existe.");
-                    return;
-                }
-
-                for (ClientHandler miembro : miembros) {
-                    if (!miembro.clientName.equals(this.clientName)) {
-                        reenviarArchivoAudio(miembro.clientSocket, archivo, this.clientName);
-                    }
-                }
-                
-                // Guardar audio en historial de grupo
-                MessageHistory.saveGroupAudio(this.clientName, destino, archivo);
-                
-                out.println("Audio reenviado a grupo " + destino);
-
-            } else {
-                ClientHandler receptor = users.get(destino);
-                if (receptor != null) {
-                    reenviarArchivoAudio(receptor.clientSocket, archivo, this.clientName);
-                    
-                    // Guardar audio en historial privado
-                    MessageHistory.savePrivateAudio(this.clientName, destino, archivo);
-                    
-                    out.println("Audio reenviado a usuario " + destino);
-                } else {
-                    out.println("Usuario destino no encontrado.");
-                }
-            }
-
-            archivo.delete(); // Elimina temporal tras reenviar
-
-        } catch (IOException e) {
-            e.printStackTrace();
-            out.println("Error al recibir o reenviar audio.");
-        }
-    }
-
-    public static void reproducirAudio(File archivo) {
-        try (AudioInputStream audioStream = AudioSystem.getAudioInputStream(archivo)) {
-            AudioFormat formato = audioStream.getFormat();
-            DataLine.Info info = new DataLine.Info(Clip.class, formato);
-
-            Clip clip = (Clip) AudioSystem.getLine(info);
-
-            clip.open(audioStream);
-            clip.start();
-
-            // Esperar a que termine la reproducción
-            while (!clip.isRunning())
-                Thread.sleep(10);
-            while (clip.isRunning())
-                Thread.sleep(10);
-
-            clip.close();
-        } catch (UnsupportedAudioFileException | IOException | LineUnavailableException | InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public void escucharMensajes() {
-        try {
-            while (true) {
-                String tipoMensaje = in.readLine();
-                if (tipoMensaje == null) break;
-
-                if ("AUDIO".equals(tipoMensaje)) {
-                    String nombreEmisor = in.readLine();
-                    recibirArchivoAudio(nombreEmisor);
-                } else {
-                    System.out.println(tipoMensaje);
-                }
+            if (clientSocket != null && !clientSocket.isClosed()) {
+                clientSocket.close();
             }
         } catch (IOException e) {
-            e.printStackTrace();
-            System.out.println("Error en la conexión o lectura de mensajes.");
+            System.err.println("Error al cerrar conexión: " + e.getMessage());
         }
     }
 }
