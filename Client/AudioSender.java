@@ -7,13 +7,16 @@ import java.util.Scanner;
 
 public class AudioSender {
 
-    public static void grabarYEnviarAudio(Socket socket, String destino, boolean esGrupo) {
+    public static void grabarYEnviarAudio(Socket socket, Scanner scanner2, boolean esGrupo) {
         try {
             Scanner scanner = new Scanner(System.in);
 
-            if (destino == null || destino.trim().isEmpty()) {
+            String destino = null;
+            if (scanner2 == null) {
                 System.out.println(esGrupo ? "Ingresa el nombre del grupo:" : "Ingresa el nombre del usuario:");
-                destino = scanner.nextLine();
+                destino = scanner.nextLine().trim();
+            } else {
+                destino = scanner2.nextLine().trim();
             }
 
             AudioFormat formato = new AudioFormat(16000, 16, 1, true, true);
@@ -51,7 +54,7 @@ public class AudioSender {
             File archivoWav = new File("temp_audio.wav");
             try (ByteArrayInputStream bais = new ByteArrayInputStream(audioData);
                  AudioInputStream ais = new AudioInputStream(bais, formato, audioData.length / formato.getFrameSize())) {
-                AudioSystem.write(ais, AudioFileFormat.Type.WAVE, archivoWav);
+            enviarArchivoAudio(socket, destino, esGrupo, archivoWav);
             }
 
             enviarArchivoAudio(socket, destino, esGrupo, archivoWav);

@@ -1,0 +1,4 @@
+[2025-05-23 16:19:40] Guzman -> Danie: [AUDIO: private_Guzman_Danie_2025-05-23_16-19-40_1748035180580_Guzman_temp_audio_1748035180512.wav]
+[2025-05-23 16:19:40] Guzman -> Danie: [AUDIO: private_Guzman_Danie_2025-05-23_16-19-40_1748035180580_Guzman_temp_audio_1748035180512.wav]
+[2025-05-23 16:20:16] Danie -> Guzman: Hola
+[2025-05-23 16:20:16] Danie -> Guzman: Hola

@@ -8,7 +8,8 @@ import java.util.Scanner;
 public class Client {
     private static final String SERVER_ADDRESS = "localhost";
     private static final int SERVER_PORT = 6789;
-    
+    public static volatile boolean llamadaActiva = false;
+
     private static volatile boolean esperandoEnter = false;
     private static final Object enterLock = new Object();
 
@@ -21,19 +22,23 @@ public class Client {
             DataOutputStream dataOut = new DataOutputStream(socket.getOutputStream());
             Scanner scanner = new Scanner(System.in);
         ) {
-            // Crear directorio para audios recibidos
             new File("audios_recibidos").mkdirs();
 
-            // Hilo para recibir mensajes y audios
             Thread recibir = new Thread(() -> {
                 try {
                     String linea;
                     while ((linea = in.readLine()) != null) {
                         if (linea.equals("AUDIO_INCOMING")) {
-                            // Se va a recibir un audio
                             recibirYReproducirAudio(dataIn);
+                        } else if (linea.startsWith("IP_DESTINO:")) {
+                            String ip = linea.split(":")[1];
+                            String puertoLine = in.readLine();
+                            int puerto = Integer.parseInt(puertoLine.split(":")[1]);
+
+                            System.out.println("Llamando a " + ip + ":" + puerto + "...");
+                            new Thread(() -> AudioCallSender.iniciarLlamada(ip, puerto)).start();
+                            new Thread(() -> AudioCallReceiver.iniciarRecepcion(puerto)).start();
                         } else {
-                            // Mostrar mensaje de texto normal
                             System.out.println(linea);
                         }
                     }
@@ -44,46 +49,56 @@ public class Client {
             recibir.start();
 
             while (true) {
-                String linea;
                 
+
+                String linea;
+
                 synchronized (enterLock) {
                     if (esperandoEnter) {
-                        continue; 
+                        continue;
                     }
                     linea = scanner.nextLine();
                 }
 
-                if (linea.equals("5")) { 
+                if (linea.equals("5")) {
                     System.out.println("Usuarios disponibles:");
-                    out.println("5"); 
-                    
-                    // hace una pausa meintras arma la lista
+                    out.println("5");
                     Thread.sleep(500);
-                    
                     System.out.println("Ingresa el nombre del usuario:");
                     String usuario = scanner.nextLine();
-                    out.println(usuario); 
+                    out.println(usuario);
                     grabarYEnviarAudio(dataOut);
                     continue;
                 }
-                
-                if (linea.equals("6")) { 
+
+                if (linea.equals("6")) {
                     System.out.println("Grupos disponibles:");
-                    out.println("6"); 
-                    
-                    // hace una pausa meintras arma la lista
+                    out.println("6");
                     Thread.sleep(500);
-                    
                     System.out.println("Ingresa el nombre del grupo:");
                     String grupo = scanner.nextLine();
-                    out.println(grupo); 
+                    out.println(grupo);
                     grabarYEnviarAudio(dataOut);
+                    continue;
+                }
+
+                if (linea.equals("9")) {
+                    System.out.print("Nombre del usuario a llamar: ");
+                    String destinatario = scanner.nextLine();
+                    System.out.print("IP del usuario: ");
+                    String ip = scanner.nextLine();
+                    System.out.print("Puerto receptor del usuario: ");
+                    int puerto = Integer.parseInt(scanner.nextLine());
+
+                    System.out.println("Iniciando llamada...");
+                    new Thread(() -> AudioCallSender.iniciarLlamada(ip, puerto)).start();
+                    new Thread(() -> AudioCallReceiver.iniciarRecepcion(puerto)).start();
                     continue;
                 }
 
                 out.println(linea);
 
-                if (linea.equals("4")) break; 
+                if (linea.equals("4")) break;
             }
 
         } catch (Exception e) {
@@ -93,7 +108,6 @@ public class Client {
 
     private static void recibirYReproducirAudio(DataInputStream dataIn) {
         try {
-                        
             String emisor = dataIn.readUTF();
             String nombreArchivo = dataIn.readUTF();
             long tamanoArchivo = dataIn.readLong();
@@ -111,7 +125,7 @@ public class Client {
                 while (bytesRecibidos < tamanoArchivo) {
                     int bytesParaLeer = (int) Math.min(buffer.length, tamanoArchivo - bytesRecibidos);
                     int bytesLeidos = dataIn.read(buffer, 0, bytesParaLeer);
-                    
+
                     if (bytesLeidos == -1) {
                         throw new IOException("Conexión cerrada inesperadamente");
                     }
@@ -123,10 +137,6 @@ public class Client {
             }
 
             System.out.println("Presiona ENTER para reproducir...");
-            
-            //try (Scanner enterScanner = new Scanner(System.in)) {
-             //   enterScanner.nextLine();
-           // }
 
             System.out.println("Reproduciendo audio...");
             if (reproducirAudio(archivoAudio)) {
@@ -150,7 +160,7 @@ public class Client {
 
             AudioFormat formato = new AudioFormat(44100.0f, 16, 1, true, false);
             DataLine.Info info = new DataLine.Info(TargetDataLine.class, formato);
-            
+
             if (!AudioSystem.isLineSupported(info)) {
                 System.out.println(" Micrófono no soportado");
                 return;
@@ -164,10 +174,8 @@ public class Client {
             ByteArrayOutputStream audioBuffer = new ByteArrayOutputStream();
             byte[] buffer = new byte[4096];
 
-            // controlar la grabación
             final boolean[] grabando = {true};
 
-            // detiene grabación al presionar ENTER
             Thread controlGrabacion = new Thread(() -> {
                 try {
                     scanner.nextLine();
@@ -180,7 +188,6 @@ public class Client {
             });
             controlGrabacion.start();
 
-            // Grabar audio mientras esté activo
             while (grabando[0] && microfono.isOpen()) {
                 int bytesLeidos = microfono.read(buffer, 0, buffer.length);
                 if (bytesLeidos > 0) {
@@ -191,20 +198,18 @@ public class Client {
             controlGrabacion.join();
             System.out.println("Grabación detenida");
 
-            // Crear archivo WAV temporal
             byte[] audioData = audioBuffer.toByteArray();
             if (audioData.length == 0) {
                 System.out.println("No se grabó audio");
                 return;
             }
-            
+
             File archivoTemporal = new File("temp_audio_" + System.currentTimeMillis() + ".wav");
-            
+
             try (ByteArrayInputStream bais = new ByteArrayInputStream(audioData);
                  AudioInputStream ais = new AudioInputStream(bais, formato, audioData.length / formato.getFrameSize())) {
                 AudioSystem.write(ais, AudioFileFormat.Type.WAVE, archivoTemporal);
             }
-
 
             dataOut.writeUTF(archivoTemporal.getName());
             dataOut.writeLong(archivoTemporal.length());
@@ -221,7 +226,6 @@ public class Client {
             if (archivoTemporal.delete()) {
             }
 
-
         } catch (Exception e) {
             System.err.println(" Error al grabar/enviar audio: " + e.getMessage());
             e.printStackTrace();
@@ -230,7 +234,6 @@ public class Client {
 
     public static boolean reproducirAudio(File archivoAudio) {
         try {
-            // Verificar que el archivo existe y no está vacío
             if (!archivoAudio.exists() || archivoAudio.length() == 0) {
                 System.err.println("El archivo de audio no existe o está vacío");
                 return false;
@@ -238,18 +241,18 @@ public class Client {
 
             try (AudioInputStream audioStream = AudioSystem.getAudioInputStream(archivoAudio)) {
                 AudioFormat format = audioStream.getFormat();
-                
+
                 Clip clip = AudioSystem.getClip();
                 clip.open(audioStream);
-                
+
                 clip.start();
-                
+
                 System.out.println("Duración: " + (clip.getMicrosecondLength() / 1000000.0) + " segundos");
 
                 while (clip.isRunning()) {
                     Thread.sleep(100);
                 }
-                
+
                 clip.close();
                 return true;
 

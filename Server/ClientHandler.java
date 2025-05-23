@@ -50,7 +50,17 @@ public class ClientHandler implements Runnable {
             // Menú principal
             String opcion;
             while (true) {
-                out.println("\nMENU:\n1. Enviar mensaje a usuario\n2. Crear grupo\n3. Enviar mensaje a grupo\n4. Salir\n5. Nota de voz privada\n6. Nota de voz a grupo\n7. Ver historial privado\n8. Ver historial de grupo\nElige opcion:");
+                 out.println("\nMENU:\n" +
+                    "1. Enviar mensaje a usuario\n" +
+                    "2. Crear grupo\n" +
+                    "3. Enviar mensaje a grupo\n" +
+                    "4. Salir\n" +
+                    "5. Nota de voz privada\n" +
+                    "6. Nota de voz a grupo\n" +
+                    "7. Ver historial privado\n" +
+                    "8. Ver historial de grupo\n" +
+                    "9. Llamar a un usuario\n" +
+                    "Elige opción:");
                 opcion = in.readLine();
 
                 if (opcion == null || opcion.equals("4")) break;
@@ -76,6 +86,9 @@ public class ClientHandler implements Runnable {
                         break;
                     case "8":
                         verHistorialGrupo();
+                        break;
+                    case "9":
+                        manejarLlamada();
                         break;
                     default:
                         out.println("Opción no válida.");
@@ -547,4 +560,24 @@ public class ClientHandler implements Runnable {
             System.err.println("Error al cerrar conexión: " + e.getMessage());
         }
     }
+
+    private void manejarLlamada() throws IOException {
+        out.println("¿A qué usuario deseas llamar?");
+        String destinatario = in.readLine();
+
+        if (!users.containsKey(destinatario)) {
+            out.println("El usuario no está conectado.");
+            return;
+        }
+
+        ClientHandler receptor = users.get(destinatario);
+        String ipReceptor = receptor.clientSocket.getInetAddress().getHostAddress();
+
+        out.println("Iniciando llamada a " + destinatario + "...");
+        out.println("IP_DESTINO:" + ipReceptor);
+        out.println("PUERTO_DESTINO: (no disponible)");
+
+        receptor.out.println("Llamada entrante de " + this.clientName);
+    }
+
 }
