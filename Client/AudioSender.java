@@ -11,13 +11,11 @@ public class AudioSender {
         try {
             Scanner scanner = new Scanner(System.in);
 
-            // Pedir destino si está vacío
             if (destino == null || destino.trim().isEmpty()) {
                 System.out.println(esGrupo ? "Ingresa el nombre del grupo:" : "Ingresa el nombre del usuario:");
                 destino = scanner.nextLine();
             }
 
-            // Parámetros de grabación
             AudioFormat formato = new AudioFormat(16000, 16, 1, true, true);
             DataLine.Info info = new DataLine.Info(TargetDataLine.class, formato);
             if (!AudioSystem.isLineSupported(info)) {
@@ -33,7 +31,6 @@ public class AudioSender {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buffer = new byte[4096];
 
-            // Hilo para detener grabación al presionar ENTER
             Thread stopper = new Thread(() -> {
                 Scanner stopScanner = new Scanner(System.in);
                 stopScanner.nextLine();
@@ -50,7 +47,6 @@ public class AudioSender {
             }
             stopper.join();
 
-            // Guardar archivo WAV temporal
             byte[] audioData = out.toByteArray();
             File archivoWav = new File("temp_audio.wav");
             try (ByteArrayInputStream bais = new ByteArrayInputStream(audioData);
@@ -58,10 +54,8 @@ public class AudioSender {
                 AudioSystem.write(ais, AudioFileFormat.Type.WAVE, archivoWav);
             }
 
-            // Enviar al servidor
             enviarArchivoAudio(socket, destino, esGrupo, archivoWav);
 
-            // Borrar archivo temporal
             archivoWav.delete();
 
             System.out.println("Audio enviado correctamente.");
@@ -76,17 +70,14 @@ public class AudioSender {
         PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
         DataOutputStream dataOut = new DataOutputStream(socket.getOutputStream());
 
-        // Enviar comando (5 o 6)
         out.println(esGrupo ? "6" : "5");
 
-        // Enviar destino
         out.println(destino);
 
-        // Enviar nombre de archivo y tamaño
         dataOut.writeUTF(archivo.getName());
         dataOut.writeLong(archivo.length());
 
-        // Enviar contenido del archivo
+        // Enviar el archivo
         try (FileInputStream fis = new FileInputStream(archivo)) {
             byte[] buffer = new byte[4096];
             int count;

@@ -1,0 +1,6 @@
+[2025-05-22 22:37:38] daniel -> jose: [AUDIO: private_daniel_jose_2025-05-22_22-37-38_1747971458549_daniel_temp_audio_1747971458491.wav]
+[2025-05-22 22:37:38] daniel -> jose: [AUDIO: private_daniel_jose_2025-05-22_22-37-38_1747971458549_daniel_temp_audio_1747971458491.wav]
+[2025-05-22 22:44:52] daniel -> jose: [AUDIO: private_daniel_jose_2025-05-22_22-44-52_1747971892711_daniel_temp_audio_1747971892541.wav]
+[2025-05-22 22:44:52] daniel -> jose: [AUDIO: private_daniel_jose_2025-05-22_22-44-52_1747971892711_daniel_temp_audio_1747971892541.wav]
+[2025-05-22 22:45:40] jose -> daniel: [AUDIO: private_jose_daniel_2025-05-22_22-45-40_1747971940161_jose_temp_audio_1747971940119.wav]
+[2025-05-22 22:45:40] jose -> daniel: [AUDIO: private_jose_daniel_2025-05-22_22-45-40_1747971940161_jose_temp_audio_1747971940119.wav]

@@ -43,48 +43,40 @@ public class Client {
             });
             recibir.start();
 
-            // Hilo principal para enviar mensajes y audios
             while (true) {
                 String linea;
                 
-                // Si estamos esperando ENTER para reproducir audio, usar un scanner diferente
                 synchronized (enterLock) {
                     if (esperandoEnter) {
-                        continue; // Esperar hasta que se termine de manejar el audio
+                        continue; 
                     }
                     linea = scanner.nextLine();
                 }
 
                 if (linea.equals("5")) { 
-                    // Nota de voz privada
                     System.out.println("Usuarios disponibles:");
-                    out.println("5"); // Enviar opción primero
+                    out.println("5"); 
                     
-                    // Dar tiempo para recibir la lista
+                    // hace una pausa meintras arma la lista
                     Thread.sleep(500);
                     
                     System.out.println("Ingresa el nombre del usuario:");
                     String usuario = scanner.nextLine();
-                    out.println(usuario); // Enviar destinatario
-                    
-                    // Grabar y enviar audio
+                    out.println(usuario); 
                     grabarYEnviarAudio(dataOut);
                     continue;
                 }
                 
                 if (linea.equals("6")) { 
-                    // Nota de voz a grupo
                     System.out.println("Grupos disponibles:");
-                    out.println("6"); // Enviar opción primero
+                    out.println("6"); 
                     
-                    // Dar tiempo para recibir la lista
+                    // hace una pausa meintras arma la lista
                     Thread.sleep(500);
                     
                     System.out.println("Ingresa el nombre del grupo:");
                     String grupo = scanner.nextLine();
-                    out.println(grupo); // Enviar destinatario
-                    
-                    // Grabar y enviar audio
+                    out.println(grupo); 
                     grabarYEnviarAudio(dataOut);
                     continue;
                 }
@@ -101,23 +93,17 @@ public class Client {
 
     private static void recibirYReproducirAudio(DataInputStream dataIn) {
         try {
-            synchronized (enterLock) {
-                esperandoEnter = true;
-            }
-            
-            // Recibir información del audio
+                        
             String emisor = dataIn.readUTF();
             String nombreArchivo = dataIn.readUTF();
             long tamanoArchivo = dataIn.readLong();
 
-            System.out.println("\n📢 Has recibido una nota de voz de " + emisor + " (" + tamanoArchivo + " bytes)");
+            System.out.println("\n Has recibido una nota de voz de " + emisor + " (" + tamanoArchivo + " bytes)");
 
-            // Crear archivo para guardar el audio
             File carpeta = new File("audios_recibidos");
             String nombreUnico = System.currentTimeMillis() + "_de_" + emisor + "_" + nombreArchivo;
             File archivoAudio = new File(carpeta, nombreUnico);
 
-            // Recibir y guardar el archivo
             try (FileOutputStream fos = new FileOutputStream(archivoAudio)) {
                 byte[] buffer = new byte[4096];
                 long bytesRecibidos = 0;
@@ -136,20 +122,17 @@ public class Client {
                 fos.flush();
             }
 
-            System.out.println("🎵 Audio guardado como: " + archivoAudio.getName());
             System.out.println("Presiona ENTER para reproducir...");
             
-            // Esperar a que el usuario presione ENTER (usar un nuevo Scanner para evitar conflictos)
-            try (Scanner enterScanner = new Scanner(System.in)) {
-                enterScanner.nextLine();
-            }
+            //try (Scanner enterScanner = new Scanner(System.in)) {
+             //   enterScanner.nextLine();
+           // }
 
-            // Reproducir el audio
-            System.out.println("🔊 Reproduciendo audio...");
+            System.out.println("Reproduciendo audio...");
             if (reproducirAudio(archivoAudio)) {
-                System.out.println("✅ Reproducción completada.");
+                System.out.println("Reproducción completada.");
             } else {
-                System.out.println("❌ Error en la reproducción.");
+                System.out.println(" Error en la reproducción.");
             }
 
         } catch (Exception e) {
@@ -165,12 +148,11 @@ public class Client {
         try {
             Scanner scanner = new Scanner(System.in);
 
-            // Configurar formato de audio
             AudioFormat formato = new AudioFormat(44100.0f, 16, 1, true, false);
             DataLine.Info info = new DataLine.Info(TargetDataLine.class, formato);
             
             if (!AudioSystem.isLineSupported(info)) {
-                System.out.println("❌ Micrófono no soportado");
+                System.out.println(" Micrófono no soportado");
                 return;
             }
 
@@ -178,14 +160,14 @@ public class Client {
             microfono.open(formato);
             microfono.start();
 
-            System.out.println("🎤 Grabando... Presiona ENTER para detener");
+            System.out.println("Grabando... Presiona ENTER para detener");
             ByteArrayOutputStream audioBuffer = new ByteArrayOutputStream();
             byte[] buffer = new byte[4096];
 
-            // Variable para controlar la grabación
+            // controlar la grabación
             final boolean[] grabando = {true};
 
-            // Hilo para detener grabación al presionar ENTER
+            // detiene grabación al presionar ENTER
             Thread controlGrabacion = new Thread(() -> {
                 try {
                     scanner.nextLine();
@@ -207,12 +189,12 @@ public class Client {
             }
 
             controlGrabacion.join();
-            System.out.println("🛑 Grabación detenida");
+            System.out.println("Grabación detenida");
 
             // Crear archivo WAV temporal
             byte[] audioData = audioBuffer.toByteArray();
             if (audioData.length == 0) {
-                System.out.println("❌ No se grabó audio");
+                System.out.println("No se grabó audio");
                 return;
             }
             
@@ -223,9 +205,7 @@ public class Client {
                 AudioSystem.write(ais, AudioFileFormat.Type.WAVE, archivoTemporal);
             }
 
-            System.out.println("📤 Enviando audio (" + archivoTemporal.length() + " bytes)...");
 
-            // Enviar archivo al servidor
             dataOut.writeUTF(archivoTemporal.getName());
             dataOut.writeLong(archivoTemporal.length());
 
@@ -238,15 +218,12 @@ public class Client {
                 dataOut.flush();
             }
 
-            // Eliminar archivo temporal
             if (archivoTemporal.delete()) {
-                System.out.println("🗑️ Archivo temporal eliminado");
             }
 
-            System.out.println("✅ Audio enviado correctamente");
 
         } catch (Exception e) {
-            System.err.println("❌ Error al grabar/enviar audio: " + e.getMessage());
+            System.err.println(" Error al grabar/enviar audio: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -262,16 +239,13 @@ public class Client {
             try (AudioInputStream audioStream = AudioSystem.getAudioInputStream(archivoAudio)) {
                 AudioFormat format = audioStream.getFormat();
                 
-                // Crear clip
                 Clip clip = AudioSystem.getClip();
                 clip.open(audioStream);
                 
-                // Reproducir
                 clip.start();
                 
                 System.out.println("Duración: " + (clip.getMicrosecondLength() / 1000000.0) + " segundos");
 
-                // Esperar a que termine la reproducción
                 while (clip.isRunning()) {
                     Thread.sleep(100);
                 }
