@@ -31,7 +31,27 @@ public class Client {
                         if (linea.equals("AUDIO_INCOMING")) {
                             recibirYReproducirAudio(dataIn);
                         } else if (linea.equals("IMAGEN_INCOMING")) {
-                            ImageReceiver.recibirImagen(dataIn);
+                    try {
+                        ImageReceiver.recibirImagen(dataIn);
+                        System.out.println("Imagen recibida correctamente.");
+                    } catch (Exception e) {
+                        System.err.println("Error al recibir imagen: " + e.getMessage());
+                
+                }
+                        } else if (linea.equals("LLAMADA_INCOMING")) {
+                            String emisor = dataIn.readUTF();
+                            String ip = dataIn.readUTF();
+                            int puerto = dataIn.readInt();
+
+                            System.out.println("Llamada entrante de " + emisor + " desde " + ip + ":" + puerto);
+                            System.out.print("¿Aceptar llamada? (S/N): ");
+                            String respuesta = scanner.nextLine();
+                            if (respuesta.equalsIgnoreCase("S")) {
+                                new Thread(() -> AudioCallReceiver.iniciarRecepcion(puerto)).start();
+                                llamadaActiva = true;
+                            } else {
+                                System.out.println("Llamada rechazada.");
+                            }
                         } else if (linea.startsWith("IP_DESTINO:")) {
                             String ip = linea.split(":")[1];
                             String puertoLine = in.readLine();
@@ -150,7 +170,7 @@ public class Client {
             }
 
             System.out.println("Presiona ENTER para reproducir...");
-
+            esperandoEnter = true;
             System.out.println("Reproduciendo audio...");
             if (reproducirAudio(archivoAudio)) {
                 System.out.println("Reproducción completada.");
