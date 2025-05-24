@@ -60,6 +60,7 @@ public class ClientHandler implements Runnable {
                     "7. Ver historial privado\n" +
                     "8. Ver historial de grupo\n" +
                     "9. Llamar a un usuario\n" +
+                    "10. Enviar imagen a usuario\n" +
                     "Elige opción:");
                 opcion = in.readLine();
 
@@ -90,9 +91,15 @@ public class ClientHandler implements Runnable {
                     case "9":
                         manejarLlamada();
                         break;
+                        case "10": {
+                        String receptor = in.readLine();
+                        recibirYReenviarImagen(receptor);
+                        break;
+}
                     default:
                         out.println("Opción no válida.");
                         break;
+
                 }
             }
 
@@ -579,5 +586,32 @@ public class ClientHandler implements Runnable {
 
         receptor.out.println("Llamada entrante de " + this.clientName);
     }
+
+private void recibirYReenviarImagen(String receptorNombre) {
+    try {
+        ClientHandler receptor = users.get(receptorNombre);
+        if (receptor == null) {
+            out.println("Usuario no conectado.");
+            return;
+        }
+
+        // Leer metadatos de imagen
+        String nombreImagen = dataIn.readUTF();
+        long tamano = dataIn.readLong();
+        byte[] imagenBytes = new byte[(int) tamano];
+        dataIn.readFully(imagenBytes);
+
+        // Enviar señal
+        receptor.out.println("IMAGEN_INCOMING");
+        receptor.dataOut.writeUTF(nombreImagen);
+        receptor.dataOut.writeLong(tamano);
+        receptor.dataOut.write(imagenBytes);
+        receptor.dataOut.flush();
+
+    } catch (IOException e) {
+        out.println("Error al reenviar imagen.");
+        e.printStackTrace();
+    }
+}
 
 }

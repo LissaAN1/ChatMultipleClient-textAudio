@@ -30,6 +30,8 @@ public class Client {
                     while ((linea = in.readLine()) != null) {
                         if (linea.equals("AUDIO_INCOMING")) {
                             recibirYReproducirAudio(dataIn);
+                        } else if (linea.equals("IMAGEN_INCOMING")) {
+                            ImageReceiver.recibirImagen(dataIn);
                         } else if (linea.startsWith("IP_DESTINO:")) {
                             String ip = linea.split(":")[1];
                             String puertoLine = in.readLine();
@@ -95,6 +97,17 @@ public class Client {
                     new Thread(() -> AudioCallReceiver.iniciarRecepcion(puerto)).start();
                     continue;
                 }
+
+                if (linea.equals("10")) {
+                out.println("10");
+                System.out.println("Nombre del usuario receptor:");
+                String receptor = scanner.nextLine();
+                out.println(receptor);
+
+                ImageSender.enviarImagen(socket, scanner);
+                continue;
+}
+
 
                 out.println(linea);
 
